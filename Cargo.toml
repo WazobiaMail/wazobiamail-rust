@@ -1,0 +1,24 @@
+[package]
+name = "wazobiamail"
+version = "0.1.0"
+edition = "2021"
+authors = ["Bowofade Oyerinde <bowofade@bonifade.com>"]
+description = "Official WazobiaMail Rust SDK - transactional email, domains, hosted mailboxes, deliverability"
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/oyenet1/wazobiamail"
+homepage = "https://wazobiamail.com"
+keywords = ["wazobiamail", "email", "transactional", "smtp", "mailboxes"]
+categories = ["web-programming::http-client", "email", "api-bindings"]
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tokio = { version = "1", features = ["sync", "time"] }
+bytes = "1"
+url = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
