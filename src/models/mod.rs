@@ -4,6 +4,7 @@ pub mod common;
 pub mod domains;
 pub mod mailboxes;
 pub mod messages;
+pub mod smtp;
 pub mod support;
 pub mod templates;
 
@@ -13,5 +14,6 @@ pub use common::*;
 pub use domains::*;
 pub use mailboxes::*;
 pub use messages::*;
+pub use smtp::*;
 pub use support::*;
 pub use templates::*;

@@ -1,3 +1,4 @@
+use serde_json::json;
 use wazobiamail::models::{AttachmentFile, SendMessageRequest, SpamCheckRequest, UrlAttachment};
 
 mod common;
@@ -8,10 +9,12 @@ async fn test_send_email_wire_contract_and_receipt() {
     let server = MockServer::start().await;
     server.enqueue_json(
         200,
-        serde_json::json!({
-            "status": "queued",
-            "trackingId": "trk_abc123456",
-            "recipients": 1
+        json!({
+            "result": {
+                "status": "queued",
+                "trackingId": "trk_abc123456",
+                "recipients": 1
+            }
         }),
     );
 
@@ -33,9 +36,9 @@ async fn test_send_email_wire_contract_and_receipt() {
     let res = client.send(request).await.unwrap();
 
     assert!(res.success);
-    assert_eq!(res.data.tracking_id, "trk_abc123456");
-    assert_eq!(res.data.status, "queued");
-    assert_eq!(res.data.recipients, 1);
+    assert_eq!(res.data.result.tracking_id, "trk_abc123456");
+    assert_eq!(res.data.result.status, "queued");
+    assert_eq!(res.data.result.recipients, 1);
 
     let req = server.last_request();
     assert_eq!(req.method, "POST");
@@ -56,9 +59,12 @@ async fn test_send_with_idempotency_key() {
     let server = MockServer::start().await;
     server.enqueue_json(
         200,
-        serde_json::json!({
-            "status": "queued",
-            "trackingId": "trk_idemp_1"
+        json!({
+            "result": {
+                "status": "queued",
+                "trackingId": "trk_idemp_1",
+                "recipients": 1
+            }
         }),
     );
 
@@ -75,28 +81,33 @@ async fn test_send_with_idempotency_key() {
         .await
         .unwrap();
 
-    assert!(res.success);
+    assert_eq!(res.data.result.tracking_id, "trk_idemp_1");
     let req = server.last_request();
     assert_eq!(req.header("Idempotency-Key"), Some("idemp_key_987654"));
 }
 
 #[tokio::test]
-async fn test_spam_check_and_findings() {
+async fn test_spam_check_real_response_shape() {
     let server = MockServer::start().await;
     server.enqueue_json(
         200,
-        serde_json::json!({
-            "score": 0.5,
+        json!({
+            "score": 2.5,
             "threshold": 5.0,
-            "deliverabilityScore": 95,
-            "findings": [
+            "isSpam": false,
+            "rating": "Low risk",
+            "badgeColor": "green",
+            "deliverabilityScore": 92,
+            "summary": "2 of 9 checks triggered",
+            "rules": [
                 {
-                    "rule": "SUBJ_ALL_CAPS",
-                    "score": 0.5,
-                    "description": "Subject line is all capital letters"
+                    "code": "SUBJ_ALL_CAPS",
+                    "points": 1.5,
+                    "title": "Subject is all capital letters",
+                    "description": "All-caps subjects are a common spam signal.",
+                    "recommendation": "Avoid uppercase words in the subject line"
                 }
-            ],
-            "recommendations": ["Avoid uppercase words in subject line"]
+            ]
         }),
     );
 
@@ -109,16 +120,22 @@ async fn test_spam_check_and_findings() {
 
     let res = client.messages().spam_check(request).await.unwrap();
 
-    assert_eq!(res.data.deliverability_score, 95);
-    assert_eq!(res.data.findings.len(), 1);
-    assert_eq!(res.data.findings[0].rule, "SUBJ_ALL_CAPS");
+    assert_eq!(res.data.deliverability_score, 92);
+    assert!(!res.data.is_spam);
+    assert_eq!(res.data.rating, "Low risk");
+    assert_eq!(res.data.rules.len(), 1);
+    assert_eq!(res.data.rules[0].code, "SUBJ_ALL_CAPS");
+    assert_eq!(res.data.rules[0].points, 1.5);
     assert_eq!(
-        res.data.recommendations[0],
-        "Avoid uppercase words in subject line"
+        res.data.rules[0].recommendation,
+        "Avoid uppercase words in the subject line"
     );
 
     let req = server.last_request();
     assert_eq!(req.path, "/api/v1/sending/spam-check");
+    let body: serde_json::Value = req.json().unwrap();
+    assert_eq!(body["subject"], "CLAIM YOUR PRIZE");
+    assert_eq!(body["html"], "<p>Click here</p>");
 }
 
 #[tokio::test]
@@ -126,9 +143,12 @@ async fn test_multipart_send_with_attachments() {
     let server = MockServer::start().await;
     server.enqueue_json(
         200,
-        serde_json::json!({
-            "status": "queued",
-            "trackingId": "trk_multi_1"
+        json!({
+            "result": {
+                "status": "queued",
+                "trackingId": "trk_multi_1",
+                "recipients": 1
+            }
         }),
     );
 
@@ -152,7 +172,7 @@ async fn test_multipart_send_with_attachments() {
         .await
         .unwrap();
 
-    assert!(res.success);
+    assert_eq!(res.data.result.tracking_id, "trk_multi_1");
     let req = server.last_request();
     assert_eq!(req.path, "/api/v1/sending/messages/with-attachments");
     assert!(req
@@ -164,15 +184,17 @@ async fn test_multipart_send_with_attachments() {
 }
 
 #[tokio::test]
-async fn test_upload_attachment() {
+async fn test_upload_attachment_returns_file_envelope() {
     let server = MockServer::start().await;
     server.enqueue_json(
         200,
-        serde_json::json!({
-            "fileName": "logo.png",
-            "contentType": "image/png",
-            "sizeBytes": 1024,
-            "publicUrl": "https://cdn.wazobiamail.com/logo.png"
+        json!({
+            "file": {
+                "fileName": "logo.png",
+                "contentType": "image/png",
+                "sizeBytes": 1024,
+                "publicUrl": "https://cdn.wazobiamail.com/acct-42/uploads/logo.png"
+            }
         }),
     );
 
@@ -180,32 +202,49 @@ async fn test_upload_attachment() {
     let file = AttachmentFile::from_bytes("logo.png", b"fake png data", "image/png");
     let res = client.messages().upload_attachment(file).await.unwrap();
 
-    assert_eq!(res.data.file_name, "logo.png");
-    assert_eq!(res.data.public_url, "https://cdn.wazobiamail.com/logo.png");
+    assert_eq!(res.data.file.file_name, "logo.png");
+    assert_eq!(
+        res.data.file.public_url.as_deref(),
+        Some("https://cdn.wazobiamail.com/acct-42/uploads/logo.png")
+    );
 
     let req = server.last_request();
     assert_eq!(req.path, "/api/v1/sending/attachments/upload");
 }
 
 #[tokio::test]
-async fn test_list_tracking_messages() {
+async fn test_list_tracking_messages_uses_messages_and_summary() {
     let server = MockServer::start().await;
     server.enqueue_json(
         200,
-        serde_json::json!({
-            "items": [
+        json!({
+            "messages": [
                 {
                     "trackingId": "trk_101",
+                    "senderDomain": "mail.brand.com",
                     "subject": "Monthly Statement",
-                    "from": "billing@store.com",
                     "recipientsCount": 1,
-                    "opensCount": 3,
-                    "clicksCount": 1,
+                    "acceptedCount": 1,
+                    "deliveredCount": 1,
+                    "bouncedCount": 0,
+                    "openCount": 3,
+                    "clickCount": 1,
                     "status": "delivered",
-                    "sentAt": "2026-11-09T00:00:00Z"
+                    "createdAt": "2026-11-09T00:00:00",
+                    "lastOpenedAt": "2026-11-09T08:00:00",
+                    "lastClickedAt": "2026-11-09T08:05:00",
+                    "lastDeliveryEventAt": "2026-11-09T00:02:00"
                 }
             ],
-            "total": 1
+            "summary": {
+                "messages": 1,
+                "recipients": 1,
+                "accepted": 1,
+                "delivered": 1,
+                "bounced": 0,
+                "opens": 3,
+                "clicks": 1
+            }
         }),
     );
 
@@ -216,13 +255,115 @@ async fn test_list_tracking_messages() {
         .await
         .unwrap();
 
-    assert_eq!(res.data.items.len(), 1);
-    assert_eq!(res.data.items[0].tracking_id, "trk_101");
-    assert_eq!(res.data.items[0].opens_count, 3);
+    assert_eq!(res.data.messages.len(), 1);
+    assert_eq!(res.data.messages[0].tracking_id, "trk_101");
+    assert_eq!(res.data.messages[0].open_count, 3);
+    assert_eq!(res.data.messages[0].click_count, 1);
+    assert_eq!(res.data.summary.messages, 1);
+    assert_eq!(res.data.summary.opens, 3);
 
     let req = server.last_request();
     assert!(req.path.starts_with("/api/v1/sending/tracking/messages"));
     assert!(req.path.contains("limit=10"));
     assert!(req.path.contains("status=delivered"));
-    assert!(req.header("Host").is_some());
+}
+
+#[tokio::test]
+async fn test_get_tracking_detail_wraps_message_and_events() {
+    let server = MockServer::start().await;
+    server.enqueue_json(
+        200,
+        json!({
+            "message": {
+                "message": {
+                    "trackingId": "trk_101",
+                    "senderDomain": "mail.brand.com",
+                    "subject": "Monthly Statement",
+                    "recipientsCount": 1,
+                    "acceptedCount": 1,
+                    "deliveredCount": 1,
+                    "bouncedCount": 0,
+                    "openCount": 3,
+                    "clickCount": 1,
+                    "status": "delivered",
+                    "createdAt": "2026-11-09T00:00:00",
+                    "lastOpenedAt": "2026-11-09T08:00:00",
+                    "lastClickedAt": "2026-11-09T08:05:00",
+                    "lastDeliveryEventAt": "2026-11-09T00:02:00"
+                },
+                "events": [
+                    {
+                        "id": "e5vT2xQ6tP4mL1wZ9aBc",
+                        "eventType": "click",
+                        "recipientEmail": "customer@example.com",
+                        "clickUrl": "https://brand.com/invoices",
+                        "occurredAt": "2026-11-09T08:05:00",
+                        "engagement": { "userAgent": "Mozilla/5.0" }
+                    }
+                ]
+            }
+        }),
+    );
+
+    let client = server.client();
+    let res = client.messages().get_tracking("trk_101").await.unwrap();
+
+    let detail = &res.data.message;
+    assert_eq!(detail.message.tracking_id, "trk_101");
+    assert_eq!(detail.message.status, "delivered");
+    assert_eq!(detail.events.len(), 1);
+    assert_eq!(detail.events[0].event_type, "click");
+    assert_eq!(
+        detail.events[0].click_url.as_deref(),
+        Some("https://brand.com/invoices")
+    );
+
+    let req = server.last_request();
+    assert_eq!(req.path, "/api/v1/sending/tracking/messages/trk_101");
+}
+
+#[tokio::test]
+async fn test_list_email_logs_real_shape() {
+    let server = MockServer::start().await;
+    server.enqueue_json(
+        200,
+        json!({
+            "available": true,
+            "messages": [
+                {
+                    "accountId": 42,
+                    "trackingId": "trk_101",
+                    "subject": "Monthly Statement",
+                    "senderDomain": "mail.brand.com",
+                    "from": "billing@mail.brand.com",
+                    "fromName": "Billing",
+                    "method": "api",
+                    "to": ["customer@example.com"],
+                    "cc": [],
+                    "receivedAt": "2026-11-09T00:00:00.000000Z",
+                    "status": "delivered",
+                    "recipientsCount": 1,
+                    "deliveredCount": 1,
+                    "bouncedCount": 0,
+                    "diagnostic": null,
+                    "events": []
+                }
+            ],
+            "hasMore": false,
+            "eventDetailsAvailable": false
+        }),
+    );
+
+    let client = server.client();
+    let res = client.messages().list_logs(Some(25), None).await.unwrap();
+
+    assert!(res.data.available);
+    assert!(!res.data.has_more);
+    assert_eq!(res.data.messages.len(), 1);
+    assert_eq!(res.data.messages[0].tracking_id, "trk_101");
+    assert_eq!(res.data.messages[0].method.as_deref(), Some("api"));
+    assert_eq!(res.data.messages[0].to, vec!["customer@example.com"]);
+
+    let req = server.last_request();
+    assert_eq!(req.path, "/api/v1/account/email-logs?limit=25");
 }

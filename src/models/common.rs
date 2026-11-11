@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 /// Standard API response envelope returned by all WazobiaMail endpoints.
+///
+/// Success bodies are always `{"success": bool, "message": string, "data": ...}`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiResponse<T> {
     pub success: bool,
@@ -8,8 +10,28 @@ pub struct ApiResponse<T> {
     pub data: T,
 }
 
+/// Generic `{"items": [...]}` collection used by list endpoints that have no
+/// pagination metadata (for example `/sending/api-keys`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(bound(deserialize = "T: serde::de::DeserializeOwned"))]
+pub struct Items<T> {
+    #[serde(default)]
+    pub items: Vec<T>,
+}
+
+impl<T> Items<T> {
+    pub fn into_vec(self) -> Vec<T> {
+        self.items
+    }
+}
+
 /// Generic paginated collection.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+///
+/// The backend serializes pagination metadata as
+/// `{"page", "pageSize", "totalItems", "totalPages", "hasNext", "hasPrev"}`.
+/// Endpoints backed by `platform_service::list_records` omit `hasNext`/`hasPrev`,
+/// so every field defaults.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(deserialize = "T: serde::de::DeserializeOwned"))]
 pub struct Page<T> {
     #[serde(default)]
@@ -18,11 +40,16 @@ pub struct Page<T> {
     pub pagination: Option<Pagination>,
 }
 
-/// Pagination metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Pagination metadata as serialized by the backend.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Pagination {
-    #[serde(default, rename = "currentPage", alias = "current_page")]
-    pub current_page: u32,
+    #[serde(
+        default,
+        rename = "page",
+        alias = "currentPage",
+        alias = "current_page"
+    )]
+    pub page: u32,
     #[serde(default, rename = "pageSize", alias = "page_size")]
     pub page_size: u32,
     #[serde(default, rename = "totalItems", alias = "total_items")]
@@ -34,3 +61,7 @@ pub struct Pagination {
     #[serde(default, rename = "hasPrev", alias = "has_prev")]
     pub has_prev: bool,
 }
+
+/// Response body for endpoints whose `data` is an empty JSON object (`{}`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Empty {}

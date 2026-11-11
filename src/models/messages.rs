@@ -200,32 +200,49 @@ impl SendMessageRequestBuilder {
     }
 }
 
-/// Send receipt response.
+/// Send receipt embedded in the send response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SendResult {
     #[serde(default)]
     pub status: String,
-    #[serde(rename = "trackingId", alias = "tracking_id", default)]
+    #[serde(default)]
     pub tracking_id: String,
     #[serde(default)]
     pub recipients: u32,
 }
 
-/// Result of uploading an attachment.
+/// `POST /sending/messages` payload: `{"result": {...}}`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendEnvelope {
+    pub result: SendResult,
+}
+
+/// Result of uploading an attachment to storage.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UploadedFile {
-    #[serde(rename = "fileName", alias = "file_name")]
+    #[serde(default)]
     pub file_name: String,
-    #[serde(rename = "contentType", alias = "content_type")]
-    pub content_type: String,
-    #[serde(rename = "sizeBytes", alias = "size_bytes")]
-    pub size_bytes: u64,
-    #[serde(rename = "publicUrl", alias = "public_url")]
-    pub public_url: String,
+    #[serde(default)]
+    pub content_type: Option<String>,
+    #[serde(default)]
+    pub size_bytes: i64,
+    #[serde(default)]
+    pub public_url: Option<String>,
+}
+
+/// `POST /sending/attachments/upload` payload: `{"file": {...}}`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadedFileEnvelope {
+    pub file: UploadedFile,
 }
 
 /// Spam check request payload.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct SpamCheckRequest {
     #[serde(default)]
     pub subject: String,
@@ -235,8 +252,10 @@ pub struct SpamCheckRequest {
     pub text: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from: Option<String>,
-    #[serde(rename = "replyTo", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub reply_to: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub headers: Option<std::collections::HashMap<String, String>>,
 }
 
 impl SpamCheckRequest {
@@ -252,6 +271,7 @@ pub struct SpamCheckRequestBuilder {
     text: Option<String>,
     from: Option<String>,
     reply_to: Option<String>,
+    headers: Option<std::collections::HashMap<String, String>>,
 }
 
 impl SpamCheckRequestBuilder {
@@ -275,6 +295,10 @@ impl SpamCheckRequestBuilder {
         self.reply_to = Some(reply_to.into());
         self
     }
+    pub fn headers(mut self, headers: std::collections::HashMap<String, String>) -> Self {
+        self.headers = Some(headers);
+        self
+    }
     pub fn build(self) -> Result<SpamCheckRequest> {
         Ok(SpamCheckRequest {
             subject: self.subject.unwrap_or_default(),
@@ -282,110 +306,214 @@ impl SpamCheckRequestBuilder {
             text: self.text,
             from: self.from,
             reply_to: self.reply_to,
+            headers: self.headers,
         })
     }
 }
 
-/// Deliverability finding.
+/// Deliverability rule finding.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SpamFinding {
-    pub rule: String,
-    pub score: f64,
+#[serde(rename_all = "camelCase")]
+pub struct SpamRuleFinding {
+    #[serde(default)]
+    pub code: String,
+    #[serde(default)]
+    pub points: f64,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
     pub description: String,
+    #[serde(default)]
+    pub recommendation: String,
 }
 
-/// Deliverability spam check result.
+/// Deliverability spam check result (`POST /sending/spam-check`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpamCheckResult {
+    #[serde(default)]
     pub score: f64,
+    #[serde(default)]
     pub threshold: f64,
-    #[serde(
-        rename = "deliverabilityScore",
-        alias = "deliverability_score",
-        default
-    )]
+    #[serde(default)]
+    pub is_spam: bool,
+    #[serde(default)]
+    pub rating: String,
+    #[serde(default)]
+    pub badge_color: String,
+    #[serde(default)]
     pub deliverability_score: u32,
     #[serde(default)]
-    pub findings: Vec<SpamFinding>,
+    pub summary: String,
     #[serde(default)]
-    pub recommendations: Vec<String>,
+    pub rules: Vec<SpamRuleFinding>,
 }
 
-/// Tracked message metadata.
+/// Tracked message metadata (`GET /sending/tracking/messages` items).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TrackingMessage {
-    #[serde(rename = "trackingId", alias = "tracking_id")]
+    #[serde(default)]
     pub tracking_id: String,
+    #[serde(default)]
+    pub sender_domain: String,
     #[serde(default)]
     pub subject: Option<String>,
     #[serde(default)]
-    pub from: Option<String>,
-    #[serde(rename = "recipientsCount", alias = "recipients_count", default)]
-    pub recipients_count: u32,
-    #[serde(rename = "opensCount", alias = "opens_count", default)]
-    pub opens_count: u32,
-    #[serde(rename = "clicksCount", alias = "clicks_count", default)]
-    pub clicks_count: u32,
+    pub recipients_count: i32,
+    #[serde(default)]
+    pub accepted_count: i32,
+    #[serde(default)]
+    pub delivered_count: i32,
+    #[serde(default)]
+    pub bounced_count: i32,
+    #[serde(default)]
+    pub open_count: i32,
+    #[serde(default)]
+    pub click_count: i32,
     #[serde(default)]
     pub status: String,
-    #[serde(rename = "sentAt", alias = "sent_at", default)]
-    pub sent_at: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub last_opened_at: Option<String>,
+    #[serde(default)]
+    pub last_clicked_at: Option<String>,
+    #[serde(default)]
+    pub last_delivery_event_at: Option<String>,
 }
 
 /// Tracked event in a delivery timeline.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TrackingEvent {
     #[serde(default)]
     pub id: String,
-    #[serde(rename = "eventType", alias = "event_type")]
+    #[serde(default)]
     pub event_type: String,
-    #[serde(rename = "recipientEmail", alias = "recipient_email", default)]
+    #[serde(default)]
     pub recipient_email: Option<String>,
-    #[serde(rename = "clickUrl", alias = "click_url", default)]
+    #[serde(default)]
     pub click_url: Option<String>,
-    #[serde(rename = "occurredAt", alias = "occurred_at", default)]
+    #[serde(default)]
     pub occurred_at: Option<String>,
+    #[serde(default)]
+    pub engagement: Option<serde_json::Value>,
 }
 
-/// Tracked message detail with event timeline.
+/// Aggregate delivery counters returned alongside the tracking list.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackingSummary {
+    #[serde(default)]
+    pub messages: i64,
+    #[serde(default)]
+    pub recipients: i64,
+    #[serde(default)]
+    pub accepted: i64,
+    #[serde(default)]
+    pub delivered: i64,
+    #[serde(default)]
+    pub bounced: i64,
+    #[serde(default)]
+    pub opens: i64,
+    #[serde(default)]
+    pub clicks: i64,
+}
+
+/// `GET /sending/tracking/messages` payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackingList {
+    #[serde(default)]
+    pub messages: Vec<TrackingMessage>,
+    #[serde(default)]
+    pub summary: TrackingSummary,
+}
+
+/// Tracked message with its event timeline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TrackingDetail {
-    pub message: Option<TrackingMessage>,
+    pub message: TrackingMessage,
     #[serde(default)]
     pub events: Vec<TrackingEvent>,
 }
 
-/// List of tracked messages.
+/// `GET /sending/tracking/messages/{id}` payload: `{"message": {...}}`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TrackingList {
-    #[serde(default)]
-    pub items: Vec<TrackingMessage>,
-    #[serde(default)]
-    pub total: u64,
+#[serde(rename_all = "camelCase")]
+pub struct TrackingDetailEnvelope {
+    pub message: TrackingDetail,
 }
 
-/// Customer delivery audit log.
+/// Event inside a customer delivery log row.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmailLogEvent {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub occurred_at: Option<String>,
+    #[serde(default)]
+    pub recipient: Option<String>,
+    #[serde(default)]
+    pub diagnostic: serde_json::Value,
+    #[serde(default)]
+    pub source: Option<String>,
+}
+
+/// Customer delivery audit log row.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EmailLog {
-    #[serde(rename = "trackingId", alias = "tracking_id", default)]
+    #[serde(default)]
+    pub account_id: Option<i64>,
+    #[serde(default)]
     pub tracking_id: String,
     #[serde(default)]
     pub subject: Option<String>,
     #[serde(default)]
+    pub sender_domain: Option<String>,
+    #[serde(default)]
     pub from: Option<String>,
+    #[serde(default)]
+    pub from_name: Option<String>,
+    /// `api` or `smtp`.
+    #[serde(default)]
+    pub method: Option<String>,
     #[serde(default)]
     pub to: Vec<String>,
     #[serde(default)]
-    pub status: Option<String>,
-    #[serde(rename = "receivedAt", alias = "received_at", default)]
+    pub cc: Vec<String>,
+    #[serde(default)]
     pub received_at: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub recipients_count: i64,
+    #[serde(default)]
+    pub delivered_count: i64,
+    #[serde(default)]
+    pub bounced_count: i64,
+    #[serde(default)]
+    pub diagnostic: Option<String>,
+    #[serde(default)]
+    pub events: Vec<EmailLogEvent>,
 }
 
-/// List of customer delivery audit logs.
+/// `GET /account/email-logs` payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EmailLogs {
     #[serde(default)]
+    pub available: bool,
+    #[serde(default)]
     pub messages: Vec<EmailLog>,
-    #[serde(rename = "hasMore", alias = "has_more", default)]
+    #[serde(default)]
     pub has_more: bool,
+    #[serde(default)]
+    pub event_details_available: bool,
 }

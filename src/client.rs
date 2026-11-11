@@ -10,7 +10,7 @@ use crate::config::{
 use crate::errors::{Result, WazobiaError};
 use crate::http::HttpClient;
 use crate::models::common::ApiResponse;
-use crate::models::messages::{SendMessageRequest, SendResult};
+use crate::models::messages::{SendEnvelope, SendMessageRequest};
 use crate::resources::api_keys::ApiKeysResource;
 use crate::resources::billing::{BillingResource, PlansResource, UnitsResource};
 use crate::resources::domains::DomainsResource;
@@ -19,7 +19,7 @@ use crate::resources::messages::MessagesResource;
 use crate::resources::smtp_relays::{SmtpAccessResource, SmtpRelaysResource};
 use crate::resources::status::StatusResource;
 use crate::resources::support::SupportResource;
-use crate::resources::templates::{TemplatesResource, WebhooksResource};
+use crate::resources::templates::TemplatesResource;
 
 /// Primary client for interacting with the WazobiaMail SaaS API.
 #[derive(Clone)]
@@ -37,7 +37,6 @@ pub struct WazobiaMail {
     status: StatusResource,
     support: SupportResource,
     templates: TemplatesResource,
-    webhooks: WebhooksResource,
 }
 
 impl WazobiaMail {
@@ -69,7 +68,7 @@ impl WazobiaMail {
     }
 
     /// Direct convenience shortcut for sending a transactional email.
-    pub async fn send(&self, request: SendMessageRequest) -> Result<ApiResponse<SendResult>> {
+    pub async fn send(&self, request: SendMessageRequest) -> Result<ApiResponse<SendEnvelope>> {
         self.messages.send(request).await
     }
 
@@ -78,7 +77,7 @@ impl WazobiaMail {
         &self,
         request: SendMessageRequest,
         idempotency_key: &str,
-    ) -> Result<ApiResponse<SendResult>> {
+    ) -> Result<ApiResponse<SendEnvelope>> {
         self.messages
             .send_with_idempotency(request, Some(idempotency_key))
             .await
@@ -136,10 +135,6 @@ impl WazobiaMail {
 
     pub fn templates(&self) -> &TemplatesResource {
         &self.templates
-    }
-
-    pub fn webhooks(&self) -> &WebhooksResource {
-        &self.webhooks
     }
 }
 
@@ -255,7 +250,6 @@ impl WazobiaMailBuilder {
             status: StatusResource::new(Arc::clone(&http)),
             support: SupportResource::new(Arc::clone(&http)),
             templates: TemplatesResource::new(Arc::clone(&http)),
-            webhooks: WebhooksResource::new(Arc::clone(&http)),
             http,
         })
     }

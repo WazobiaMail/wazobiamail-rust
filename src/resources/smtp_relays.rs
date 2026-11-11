@@ -3,10 +3,13 @@ use std::sync::Arc;
 
 use crate::errors::Result;
 use crate::http::HttpClient;
-use crate::models::api_keys::{CreateSmtpRelayRequest, SmtpAccess, SmtpRelay};
 use crate::models::common::ApiResponse;
+use crate::models::smtp::{
+    CreateSmtpRelayRequest, SmtpAccess, SmtpAccessPreference, SmtpRelay, SmtpRelayDeleted,
+    SmtpRelayEnvelope, SmtpRelayList, UpdateSmtpAccessRequest, UpdateSmtpRelayRequest,
+};
 
-/// Resource for configuring external SMTP relay credentials.
+/// Resource for configuring external SMTP relay credentials (`/smtp-relays`).
 #[derive(Clone)]
 pub struct SmtpRelaysResource {
     http: Arc<HttpClient>,
@@ -17,48 +20,73 @@ impl SmtpRelaysResource {
         Self { http }
     }
 
-    /// List all configured SMTP relays.
-    pub async fn list(&self) -> Result<ApiResponse<Vec<SmtpRelay>>> {
-        let builder = self.http.request(Method::GET, "/sending/smtp-relays");
+    /// List all configured SMTP relays. The payload is `{"smtpRelays": [...]}`.
+    pub async fn list(&self) -> Result<ApiResponse<SmtpRelayList>> {
+        let builder = self.http.request(Method::GET, "/smtp-relays");
         self.http.execute(builder).await
     }
 
     /// Create a new SMTP relay.
-    pub async fn create(&self, request: CreateSmtpRelayRequest) -> Result<ApiResponse<SmtpRelay>> {
+    pub async fn create(
+        &self,
+        request: CreateSmtpRelayRequest,
+    ) -> Result<ApiResponse<SmtpRelayEnvelope>> {
         let builder = self
             .http
-            .request(Method::POST, "/sending/smtp-relays")
+            .request(Method::POST, "/smtp-relays")
             .json(&request);
         self.http.execute(builder).await
     }
 
     /// Retrieve an SMTP relay by ID.
-    pub async fn get(&self, relay_id: &str) -> Result<ApiResponse<SmtpRelay>> {
-        let path = format!("/sending/smtp-relays/{relay_id}");
+    pub async fn get(&self, relay_id: &str) -> Result<ApiResponse<SmtpRelayEnvelope>> {
+        let path = format!("/smtp-relays/{relay_id}");
         let builder = self.http.request(Method::GET, &path);
         self.http.execute(builder).await
     }
 
-    /// Update an SMTP relay.
+    /// Update an SMTP relay (`PATCH`). Only provided fields change.
     pub async fn update(
         &self,
         relay_id: &str,
-        request: CreateSmtpRelayRequest,
-    ) -> Result<ApiResponse<SmtpRelay>> {
-        let path = format!("/sending/smtp-relays/{relay_id}");
-        let builder = self.http.request(Method::PUT, &path).json(&request);
+        request: UpdateSmtpRelayRequest,
+    ) -> Result<ApiResponse<SmtpRelayEnvelope>> {
+        let path = format!("/smtp-relays/{relay_id}");
+        let builder = self.http.request(Method::PATCH, &path).json(&request);
+        self.http.execute(builder).await
+    }
+
+    /// Activate an SMTP relay (`POST /smtp-relays/{id}/activate`).
+    pub async fn activate(&self, relay_id: &str) -> Result<ApiResponse<SmtpRelayEnvelope>> {
+        let path = format!("/smtp-relays/{relay_id}/activate");
+        let builder = self.http.request(Method::POST, &path);
+        self.http.execute(builder).await
+    }
+
+    /// Deactivate an SMTP relay (`POST /smtp-relays/{id}/deactivate`).
+    pub async fn deactivate(&self, relay_id: &str) -> Result<ApiResponse<SmtpRelayEnvelope>> {
+        let path = format!("/smtp-relays/{relay_id}/deactivate");
+        let builder = self.http.request(Method::POST, &path);
         self.http.execute(builder).await
     }
 
     /// Delete an SMTP relay.
-    pub async fn delete(&self, relay_id: &str) -> Result<ApiResponse<()>> {
-        let path = format!("/sending/smtp-relays/{relay_id}");
+    pub async fn delete(&self, relay_id: &str) -> Result<ApiResponse<SmtpRelayDeleted>> {
+        let path = format!("/smtp-relays/{relay_id}");
         let builder = self.http.request(Method::DELETE, &path);
         self.http.execute(builder).await
     }
 }
 
-/// Resource for toggling account-level SMTP sending access.
+/// Convenience accessor for the relay inside its envelope.
+impl SmtpRelayEnvelope {
+    pub fn relay(self) -> SmtpRelay {
+        self.smtp_relay
+    }
+}
+
+/// Resource for the account-level SMTP submission preference
+/// (`/sending/smtp-access`).
 #[derive(Clone)]
 pub struct SmtpAccessResource {
     http: Arc<HttpClient>,
@@ -69,18 +97,18 @@ impl SmtpAccessResource {
         Self { http }
     }
 
-    /// Read current SMTP access entitlement and status.
+    /// Read current SMTP entitlement, preference, and client settings.
     pub async fn get(&self) -> Result<ApiResponse<SmtpAccess>> {
-        let builder = self.http.request(Method::GET, "/account/smtp-access");
+        let builder = self.http.request(Method::GET, "/sending/smtp-access");
         self.http.execute(builder).await
     }
 
-    /// Toggle or update account SMTP access.
-    pub async fn update(&self, enabled: bool) -> Result<ApiResponse<SmtpAccess>> {
-        let payload = serde_json::json!({ "enabled": enabled });
+    /// Toggle the account SMTP submission preference.
+    pub async fn update(&self, enabled: bool) -> Result<ApiResponse<SmtpAccessPreference>> {
+        let payload = UpdateSmtpAccessRequest { enabled };
         let builder = self
             .http
-            .request(Method::PUT, "/account/smtp-access")
+            .request(Method::PUT, "/sending/smtp-access")
             .json(&payload);
         self.http.execute(builder).await
     }

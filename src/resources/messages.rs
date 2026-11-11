@@ -6,8 +6,8 @@ use crate::errors::Result;
 use crate::http::HttpClient;
 use crate::models::common::ApiResponse;
 use crate::models::messages::{
-    AttachmentFile, EmailLogs, SendMessageRequest, SendResult, SpamCheckRequest, SpamCheckResult,
-    TrackingDetail, TrackingList, UploadedFile,
+    AttachmentFile, EmailLogs, SendEnvelope, SendMessageRequest, SpamCheckRequest, SpamCheckResult,
+    TrackingDetailEnvelope, TrackingList, UploadedFileEnvelope,
 };
 
 /// Resource for transactional email sending, deliverability, and tracking.
@@ -22,7 +22,7 @@ impl MessagesResource {
     }
 
     /// Send a transactional email.
-    pub async fn send(&self, request: SendMessageRequest) -> Result<ApiResponse<SendResult>> {
+    pub async fn send(&self, request: SendMessageRequest) -> Result<ApiResponse<SendEnvelope>> {
         self.send_with_idempotency(request, None).await
     }
 
@@ -31,7 +31,7 @@ impl MessagesResource {
         &self,
         request: SendMessageRequest,
         idempotency_key: Option<&str>,
-    ) -> Result<ApiResponse<SendResult>> {
+    ) -> Result<ApiResponse<SendEnvelope>> {
         let mut builder = self
             .http
             .request(Method::POST, "/sending/messages")
@@ -47,7 +47,7 @@ impl MessagesResource {
         &self,
         request: SendMessageRequest,
         files: Vec<AttachmentFile>,
-    ) -> Result<ApiResponse<SendResult>> {
+    ) -> Result<ApiResponse<SendEnvelope>> {
         let mut form = Form::new();
         let message_json = serde_json::to_string(&request)?;
         form = form.text("message", message_json);
@@ -68,10 +68,12 @@ impl MessagesResource {
     }
 
     /// Upload a single attachment to receive a persistent public URL.
+    ///
+    /// The backend returns `data: {"file": {...}}`.
     pub async fn upload_attachment(
         &self,
         file: AttachmentFile,
-    ) -> Result<ApiResponse<UploadedFile>> {
+    ) -> Result<ApiResponse<UploadedFileEnvelope>> {
         let part = Part::bytes(file.content)
             .file_name(file.file_name)
             .mime_str(&file.content_type)
@@ -97,7 +99,9 @@ impl MessagesResource {
         self.http.execute(builder).await
     }
 
-    /// List tracked delivery messages.
+    /// List tracked delivery messages (`GET /sending/tracking/messages`).
+    ///
+    /// The backend returns `{"messages": [...], "summary": {...}}`.
     pub async fn list_tracking(
         &self,
         limit: Option<u32>,
@@ -117,7 +121,7 @@ impl MessagesResource {
         self.http.execute(builder).await
     }
 
-    /// List tracked messages (alias for list_tracking).
+    /// List tracked messages (alias for `list_tracking`).
     pub async fn list_tracked(
         &self,
         limit: Option<u32>,
@@ -128,18 +132,26 @@ impl MessagesResource {
     }
 
     /// Read detailed delivery-event timeline for a tracked message.
-    pub async fn get_tracking(&self, tracking_id: &str) -> Result<ApiResponse<TrackingDetail>> {
+    ///
+    /// The backend returns `{"message": {"message": {...}, "events": [...]}}`.
+    pub async fn get_tracking(
+        &self,
+        tracking_id: &str,
+    ) -> Result<ApiResponse<TrackingDetailEnvelope>> {
         let path = format!("/sending/tracking/messages/{tracking_id}");
         let builder = self.http.request(Method::GET, &path);
         self.http.execute(builder).await
     }
 
-    /// Read detailed delivery-event timeline (alias for get_tracking).
-    pub async fn get_tracked(&self, tracking_id: &str) -> Result<ApiResponse<TrackingDetail>> {
+    /// Read detailed delivery-event timeline (alias for `get_tracking`).
+    pub async fn get_tracked(
+        &self,
+        tracking_id: &str,
+    ) -> Result<ApiResponse<TrackingDetailEnvelope>> {
         self.get_tracking(tracking_id).await
     }
 
-    /// List customer-visible email delivery logs.
+    /// List customer-visible email delivery logs (`GET /account/email-logs`).
     pub async fn list_logs(
         &self,
         limit: Option<u32>,

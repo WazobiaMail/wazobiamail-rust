@@ -3,10 +3,11 @@ use std::sync::Arc;
 
 use crate::errors::Result;
 use crate::http::HttpClient;
-use crate::models::common::{ApiResponse, Page};
+use crate::models::common::ApiResponse;
 use crate::models::mailboxes::{
-    CreateMailboxRequest, CreatedMailbox, InboxMessageDetail, InboxMessageSummary, Mailbox,
-    MailboxCredential, MailboxStorage,
+    CreateMailboxCredentialRequest, CreateMailboxRequest, CreatedMailbox, InboxMessageDetail,
+    Mailbox, MailboxCredentialEnvelope, MailboxCredentialRevoked, MailboxDeleted, MailboxEnvelope,
+    MailboxMessageDeleted, MailboxMessagePage, MailboxStorage,
 };
 
 /// Resource for hosted mailboxes, credentials, storage, and headless inboxes.
@@ -20,45 +21,55 @@ impl MailboxesResource {
         Self { http }
     }
 
-    /// List all hosted mailboxes, optionally filtered by domain ID.
-    pub async fn list(&self, domain_id: Option<&str>) -> Result<ApiResponse<Vec<Mailbox>>> {
-        let mut builder = self.http.request(Method::GET, "/mailboxes");
-        if let Some(did) = domain_id {
-            builder = builder.query(&[("domainId", did)]);
-        }
+    /// List all hosted mailboxes.
+    ///
+    /// The backend returns a bare array in `data`.
+    pub async fn list(&self) -> Result<ApiResponse<Vec<Mailbox>>> {
+        let builder = self.http.request(Method::GET, "/mailboxes");
         self.http.execute(builder).await
     }
 
-    /// Provision a new mailbox.
+    /// Provision a new mailbox with a generated password.
     pub async fn create(
         &self,
         domain_id: &str,
         local_part: &str,
         display_name: Option<&str>,
     ) -> Result<ApiResponse<CreatedMailbox>> {
-        let payload = CreateMailboxRequest {
+        self.create_with_request(CreateMailboxRequest {
             domain_id: domain_id.to_string(),
             local_part: local_part.to_string(),
             display_name: display_name.map(|s| s.to_string()),
+            quota_mb: None,
             password: None,
-        };
-        let builder = self.http.request(Method::POST, "/mailboxes").json(&payload);
+            role: None,
+            status: None,
+        })
+        .await
+    }
+
+    /// Provision a new mailbox with explicit options.
+    pub async fn create_with_request(
+        &self,
+        request: CreateMailboxRequest,
+    ) -> Result<ApiResponse<CreatedMailbox>> {
+        let builder = self.http.request(Method::POST, "/mailboxes").json(&request);
         self.http.execute(builder).await
     }
 
-    /// Retrieve mailbox details.
-    pub async fn get(&self, mailbox_id: &str) -> Result<ApiResponse<Mailbox>> {
+    /// Retrieve mailbox details (`{"mailbox": {...}}`).
+    pub async fn get(&self, mailbox_id: &str) -> Result<ApiResponse<MailboxEnvelope>> {
         let path = format!("/mailboxes/{mailbox_id}");
         let builder = self.http.request(Method::GET, &path);
         self.http.execute(builder).await
     }
 
-    /// Update mailbox display name.
+    /// Update a mailbox display name or password (`PATCH /mailboxes/{id}`).
     pub async fn update(
         &self,
         mailbox_id: &str,
         display_name: Option<&str>,
-    ) -> Result<ApiResponse<Mailbox>> {
+    ) -> Result<ApiResponse<MailboxEnvelope>> {
         let path = format!("/mailboxes/{mailbox_id}");
         let payload = serde_json::json!({ "displayName": display_name });
         let builder = self.http.request(Method::PATCH, &path).json(&payload);
@@ -66,38 +77,54 @@ impl MailboxesResource {
     }
 
     /// Delete a hosted mailbox.
-    pub async fn delete(&self, mailbox_id: &str) -> Result<ApiResponse<()>> {
+    pub async fn delete(&self, mailbox_id: &str) -> Result<ApiResponse<MailboxDeleted>> {
         let path = format!("/mailboxes/{mailbox_id}");
         let builder = self.http.request(Method::DELETE, &path);
         self.http.execute(builder).await
     }
 
-    /// Retrieve account-wide mailbox storage quotas and usage metrics.
+    /// Retrieve account-wide mailbox storage quotas and usage.
     pub async fn get_storage(&self) -> Result<ApiResponse<MailboxStorage>> {
         let builder = self.http.request(Method::GET, "/mailboxes/storage");
         self.http.execute(builder).await
     }
 
-    /// Generate or rotate password credentials for a mailbox.
+    /// Generate a mailbox password credential.
+    ///
+    /// The backend currently rejects `expiresAt`, so this sends an empty body.
     pub async fn create_credential(
         &self,
         mailbox_id: &str,
-        password: Option<&str>,
-    ) -> Result<ApiResponse<MailboxCredential>> {
+    ) -> Result<ApiResponse<MailboxCredentialEnvelope>> {
+        self.create_credential_with_expiry(mailbox_id, None).await
+    }
+
+    /// Generate a mailbox credential with an optional expiry timestamp.
+    ///
+    /// `expiresAt` is forwarded when provided, but the current backend rejects
+    /// expiring inbox passwords.
+    pub async fn create_credential_with_expiry(
+        &self,
+        mailbox_id: &str,
+        expires_at: Option<&str>,
+    ) -> Result<ApiResponse<MailboxCredentialEnvelope>> {
         let path = format!("/mailboxes/{mailbox_id}/credentials");
-        let payload = serde_json::json!({ "password": password });
+        let payload = CreateMailboxCredentialRequest {
+            expires_at: expires_at.map(|s| s.to_string()),
+        };
         let builder = self.http.request(Method::POST, &path).json(&payload);
         self.http.execute(builder).await
     }
 
-    /// Revoke a mailbox credential.
+    /// Revoke a mailbox credential
+    /// (`POST /mailboxes/{id}/credentials/{credentialId}/revoke`).
     pub async fn revoke_credential(
         &self,
         mailbox_id: &str,
         credential_id: &str,
-    ) -> Result<ApiResponse<()>> {
-        let path = format!("/mailboxes/{mailbox_id}/credentials/{credential_id}");
-        let builder = self.http.request(Method::DELETE, &path);
+    ) -> Result<ApiResponse<MailboxCredentialRevoked>> {
+        let path = format!("/mailboxes/{mailbox_id}/credentials/{credential_id}/revoke");
+        let builder = self.http.request(Method::POST, &path);
         self.http.execute(builder).await
     }
 
@@ -121,29 +148,33 @@ impl InboxMessagesSubResource {
         &self,
         mailbox_id: &str,
         unread_only: Option<bool>,
-    ) -> Result<ApiResponse<Page<InboxMessageSummary>>> {
-        self.list_with_params(mailbox_id, unread_only, None, None)
+    ) -> Result<ApiResponse<MailboxMessagePage>> {
+        self.list_with_params(mailbox_id, unread_only, None, None, None)
             .await
     }
 
-    /// List messages in an enterprise inbox with pagination parameters.
+    /// List messages with pagination (`page`, `limit`), unread filter, and search.
     pub async fn list_with_params(
         &self,
         mailbox_id: &str,
         unread_only: Option<bool>,
+        page: Option<u32>,
         limit: Option<u32>,
-        offset: Option<u32>,
-    ) -> Result<ApiResponse<Page<InboxMessageSummary>>> {
+        search: Option<&str>,
+    ) -> Result<ApiResponse<MailboxMessagePage>> {
         let path = format!("/mailboxes/{mailbox_id}/messages");
         let mut builder = self.http.request(Method::GET, &path);
         if let Some(unread) = unread_only {
             builder = builder.query(&[("unreadOnly", unread)]);
         }
-        if let Some(l) = limit {
-            builder = builder.query(&[("limit", l)]);
+        if let Some(page) = page {
+            builder = builder.query(&[("page", page)]);
         }
-        if let Some(o) = offset {
-            builder = builder.query(&[("offset", o)]);
+        if let Some(limit) = limit {
+            builder = builder.query(&[("limit", limit)]);
+        }
+        if let Some(search) = search {
+            builder = builder.query(&[("search", search)]);
         }
         self.http.execute(builder).await
     }
@@ -160,7 +191,11 @@ impl InboxMessagesSubResource {
     }
 
     /// Delete an inbox message.
-    pub async fn delete(&self, mailbox_id: &str, message_id: &str) -> Result<ApiResponse<()>> {
+    pub async fn delete(
+        &self,
+        mailbox_id: &str,
+        message_id: &str,
+    ) -> Result<ApiResponse<MailboxMessageDeleted>> {
         let path = format!("/mailboxes/{mailbox_id}/messages/{message_id}");
         let builder = self.http.request(Method::DELETE, &path);
         self.http.execute(builder).await

@@ -1,79 +1,86 @@
 use serde::{Deserialize, Serialize};
 
-/// API Key metadata.
+/// API key metadata as returned by `GET /sending/api-keys`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiKey {
     pub id: String,
     pub name: String,
+    /// `general` or `domain`.
+    #[serde(default)]
     pub scope: String,
-    #[serde(rename = "keyPrefix", alias = "key_prefix", default)]
+    #[serde(default)]
+    pub domain_id: Option<String>,
+    /// Domain name resolved from `domainId` by the backend (read-only).
+    #[serde(default)]
+    pub domain: Option<String>,
+    #[serde(default)]
     pub key_prefix: String,
-    #[serde(rename = "createdAt", alias = "created_at", default)]
-    pub created_at: Option<String>,
-    #[serde(rename = "expiresAt", alias = "expires_at", default)]
+    #[serde(default)]
+    pub last_used_at: Option<String>,
+    #[serde(default)]
     pub expires_at: Option<String>,
+    #[serde(default)]
+    pub revoked_at: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
 }
 
-/// Created API Key response including raw plaintext secret.
+/// Created (or regenerated) API key including the one-time plaintext secret.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreatedApiKey {
     pub id: String,
     pub name: String,
+    #[serde(default)]
     pub scope: String,
-    #[serde(rename = "keyPrefix", alias = "key_prefix", default)]
+    #[serde(default)]
+    pub domain_id: Option<String>,
+    #[serde(default)]
     pub key_prefix: String,
-    #[serde(rename = "apiKey", alias = "api_key", default)]
+    /// Full `wzbm_...` secret. Returned only on create/regenerate.
+    #[serde(default)]
     pub api_key: String,
-    #[serde(rename = "expiresAt", alias = "expires_at", default)]
+    #[serde(default)]
     pub expires_at: Option<String>,
 }
 
-/// Request to create a new API key.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Request to create a new sending API key.
+///
+/// `POST /sending/api-keys` accepts `name`, optional `scope`
+/// (`general`/`domain`), optional `domainId`, and optional `expiresAt`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateApiKeyRequest {
     pub name: String,
-    pub scope: String,
-    #[serde(rename = "domainId", skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain_id: Option<String>,
-    #[serde(rename = "expiresInDays", skip_serializing_if = "Option::is_none")]
-    pub expires_in_days: Option<u32>,
+    /// ISO-8601 date-time (for example `2027-01-01T00:00:00`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<String>,
 }
 
-/// External SMTP relay configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SmtpRelay {
-    pub id: String,
-    pub name: String,
-    #[serde(rename = "smtpHost", alias = "smtp_host", alias = "host")]
-    pub smtp_host: String,
-    #[serde(rename = "smtpPort", alias = "smtp_port", alias = "port")]
-    pub smtp_port: u16,
-    pub username: String,
-    #[serde(rename = "tlsMode", alias = "tls_mode", default)]
-    pub tls_mode: String,
-    #[serde(rename = "isActive", alias = "is_active", default)]
-    pub is_active: bool,
+impl CreateApiKeyRequest {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            ..Self::default()
+        }
+    }
 }
 
-/// Request to create or update an SMTP relay.
+/// Envelope used by create and regenerate: `{"apiKey": {...}}`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateSmtpRelayRequest {
-    pub name: String,
-    #[serde(rename = "smtpHost")]
-    pub smtp_host: String,
-    #[serde(rename = "smtpPort")]
-    pub smtp_port: u16,
-    pub username: String,
-    pub password: Option<String>,
-    #[serde(rename = "tlsMode", skip_serializing_if = "Option::is_none")]
-    pub tls_mode: Option<String>,
+#[serde(rename_all = "camelCase")]
+pub struct ApiKeyEnvelope {
+    pub api_key: CreatedApiKey,
 }
 
-/// Account SMTP access configuration.
+/// Envelope returned by revoke: `{"keyId": "..."}`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SmtpAccess {
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(rename = "enforcementLevel", alias = "enforcement_level", default)]
-    pub enforcement_level: Option<String>,
+#[serde(rename_all = "camelCase")]
+pub struct ApiKeyRevoked {
+    pub key_id: String,
 }

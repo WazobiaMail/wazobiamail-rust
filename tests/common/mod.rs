@@ -160,10 +160,12 @@ impl MockServer {
         upgrade_required: bool,
         errors: Option<serde_json::Value>,
     ) {
+        // Mirrors `AppError::into_response` on the backend:
+        // {"success": false, "statusCode": <code>, "message": <safe message>}
         let mut envelope = serde_json::json!({
             "success": false,
+            "statusCode": status,
             "message": message,
-            "data": null,
         });
         if upgrade_required {
             envelope["upgradeRequired"] = serde_json::json!(true);

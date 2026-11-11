@@ -5,10 +5,11 @@ use crate::errors::Result;
 use crate::http::HttpClient;
 use crate::models::common::ApiResponse;
 use crate::models::templates::{
-    CreateTemplateRequest, CreateWebhookRequest, Template, TemplatePreview, Webhook,
+    CreateTemplateRequest, PreviewTemplateRequest, Template, TemplateListQuery, TemplatePage,
+    TemplatePreview, UpdateTemplateRequest,
 };
 
-/// Resource for managing reusable email templates.
+/// Resource for managing reusable email templates (`/templates`).
 #[derive(Clone)]
 pub struct TemplatesResource {
     http: Arc<HttpClient>,
@@ -19,9 +20,38 @@ impl TemplatesResource {
         Self { http }
     }
 
-    /// List all email templates.
-    pub async fn list(&self) -> Result<ApiResponse<Vec<Template>>> {
+    /// List email templates with the default page (first 50).
+    ///
+    /// The backend returns `{"items", "total", "limit", "offset"}`.
+    pub async fn list(&self) -> Result<ApiResponse<TemplatePage>> {
         let builder = self.http.request(Method::GET, "/templates");
+        self.http.execute(builder).await
+    }
+
+    /// List email templates with filters and pagination.
+    pub async fn list_with_query(
+        &self,
+        query: TemplateListQuery,
+    ) -> Result<ApiResponse<TemplatePage>> {
+        let mut builder = self.http.request(Method::GET, "/templates");
+        if let Some(channel) = &query.channel {
+            builder = builder.query(&[("channel", channel)]);
+        }
+        if let Some(category) = &query.category {
+            builder = builder.query(&[("category", category)]);
+        }
+        if let Some(status) = &query.status {
+            builder = builder.query(&[("status", status)]);
+        }
+        if let Some(search) = &query.search {
+            builder = builder.query(&[("search", search)]);
+        }
+        if let Some(limit) = query.limit {
+            builder = builder.query(&[("limit", limit)]);
+        }
+        if let Some(offset) = query.offset {
+            builder = builder.query(&[("offset", offset)]);
+        }
         self.http.execute(builder).await
     }
 
@@ -38,62 +68,35 @@ impl TemplatesResource {
         self.http.execute(builder).await
     }
 
-    /// Update a template.
+    /// Update a template (`PUT /templates/{id}`).
     pub async fn update(
         &self,
         template_id: &str,
-        request: CreateTemplateRequest,
+        request: UpdateTemplateRequest,
     ) -> Result<ApiResponse<Template>> {
         let path = format!("/templates/{template_id}");
         let builder = self.http.request(Method::PUT, &path).json(&request);
         self.http.execute(builder).await
     }
 
-    /// Preview rendered template with sample variable substitutions.
+    /// Preview a rendered template with optional sample variables.
+    ///
+    /// Sends `{"sampleVariables": {...}}` to match
+    /// `PreviewTemplateRequest` on the backend.
     pub async fn preview(
         &self,
         template_id: &str,
-        variables: serde_json::Value,
+        sample_variables: Option<serde_json::Value>,
     ) -> Result<ApiResponse<TemplatePreview>> {
         let path = format!("/templates/{template_id}/preview");
-        let builder = self.http.request(Method::POST, &path).json(&variables);
+        let payload = PreviewTemplateRequest { sample_variables };
+        let builder = self.http.request(Method::POST, &path).json(&payload);
         self.http.execute(builder).await
     }
 
     /// Delete a template.
     pub async fn delete(&self, template_id: &str) -> Result<ApiResponse<()>> {
         let path = format!("/templates/{template_id}");
-        let builder = self.http.request(Method::DELETE, &path);
-        self.http.execute(builder).await
-    }
-}
-
-/// Resource for configuring webhook event listeners.
-#[derive(Clone)]
-pub struct WebhooksResource {
-    http: Arc<HttpClient>,
-}
-
-impl WebhooksResource {
-    pub fn new(http: Arc<HttpClient>) -> Self {
-        Self { http }
-    }
-
-    /// List all configured webhooks.
-    pub async fn list(&self) -> Result<ApiResponse<Vec<Webhook>>> {
-        let builder = self.http.request(Method::GET, "/webhooks");
-        self.http.execute(builder).await
-    }
-
-    /// Register a new webhook endpoint.
-    pub async fn create(&self, request: CreateWebhookRequest) -> Result<ApiResponse<Webhook>> {
-        let builder = self.http.request(Method::POST, "/webhooks").json(&request);
-        self.http.execute(builder).await
-    }
-
-    /// Delete a webhook endpoint.
-    pub async fn delete(&self, webhook_id: &str) -> Result<ApiResponse<()>> {
-        let path = format!("/webhooks/{webhook_id}");
         let builder = self.http.request(Method::DELETE, &path);
         self.http.execute(builder).await
     }

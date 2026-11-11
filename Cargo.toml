@@ -6,8 +6,10 @@ authors = ["Bowofade Oyerinde <bowofade@bonifade.com>"]
 description = "Official WazobiaMail Rust SDK - transactional email, domains, hosted mailboxes, deliverability"
 readme = "README.md"
 license = "MIT"
-repository = "https://github.com/oyenet1/wazobiamail"
+repository = "https://github.com/WazobiaMail/wazobiamail-rust"
 homepage = "https://wazobiamail.com"
+documentation = "https://docs.rs/wazobiamail"
+rust-version = "1.75"
 keywords = ["wazobiamail", "email", "transactional", "smtp", "mailboxes"]
 categories = ["web-programming::http-client", "email", "api-bindings"]
 

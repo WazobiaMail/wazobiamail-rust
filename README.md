@@ -4,7 +4,7 @@ Official, asynchronous, strongly typed Rust SDK for the [WazobiaMail](https://wa
 
 Provides seamless integration for transactional email delivery, deliverability analysis, domain DNS verification, hosted mailboxes, external SMTP relays, and enterprise headless inboxes.
 
-> 📚 **Official Platform Documentation**: Visit [docs.wazobiamail.com](https://docs.wazobiamail.com) for exhaustive API references, architecture guides, DNS setup walkthroughs, and webhook configurations.
+> 📚 **Official Platform Documentation**: Visit [docs.wazobiamail.com](https://docs.wazobiamail.com) for exhaustive API references, architecture guides, DNS setup walkthroughs, and deliverability guidance.
 
 ---
 
@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
 
-    println!("Queued tracking ID: {}", response.data.tracking_id);
+    println!("Queued tracking ID: {}", response.data.result.tracking_id);
     Ok(())
 }
 ```
@@ -116,9 +116,9 @@ let result = client.messages().spam_check(
         .build()?
 ).await?;
 
-println!("Deliverability Score: {}/100", result.data.deliverability_score);
-for finding in result.data.findings {
-    println!(" - [{}] {}: {}", finding.rule, finding.description, finding.score);
+println!("Deliverability Score: {}/100 ({})", result.data.deliverability_score, result.data.rating);
+for rule in result.data.rules {
+    println!(" - [{}] {}: {} (+{} points)", rule.code, rule.title, rule.description, rule.points);
 }
 # Ok(())
 # }
@@ -135,7 +135,7 @@ Every HTML email sent through WazobiaMail can automatically include an invisible
 - An `email.opened` event is recorded.
 - Captures exact timestamp, recipient IP geolocation, device type, and client user-agent.
 - Tracks unique opens vs. total open counts to measure genuine recipient engagement.
-- Queryable via `client.messages().get_tracking(tracking_id)` or streamed via Webhooks.
+- Queryable via `client.messages().get_tracking(tracking_id)`.
 
 #### 2. Click Receipts (Link Tracking)
 Links in your email content can be rewritten using your verified tracking domain (`email.mail.brand.com` or `trk.wazobiamail.com`):
@@ -152,25 +152,24 @@ Every message transitions through well-defined lifecycle states:
 // Inspect single message receipts and timeline
 let detail = client.messages().get_tracking("trk_123456789").await?;
 
-if let Some(msg) = detail.data.message {
-    println!("Status: {}", msg.status);
-    println!("Sent At: {:?}", msg.sent_at);
-    println!("Open Count (Read Receipts): {}", msg.opens_count);
-    println!("Click Count (Click Receipts): {}", msg.clicks_count);
-}
+let msg = &detail.data.message.message;
+println!("Status: {}", msg.status);
+println!("Created At: {:?}", msg.created_at);
+println!("Open Count (Read Receipts): {}", msg.open_count);
+println!("Click Count (Click Receipts): {}", msg.click_count);
 
-for event in detail.data.events {
+for event in &detail.data.message.events {
     println!("[{:?}] {} - Recipient: {:?}", event.occurred_at, event.event_type, event.recipient_email);
-    if let Some(url) = event.click_url {
+    if let Some(url) = &event.click_url {
         println!("  Clicked URL: {}", url);
     }
 }
 
 // Query aggregate stats and delivery list
 let stats = client.messages().list_tracking(Some(20), None, Some("delivered")).await?;
-println!("Total tracked: {}", stats.data.total);
-for item in stats.data.items {
-    println!("{}: {} (opens: {}, clicks: {})", item.tracking_id, item.status, item.opens_count, item.clicks_count);
+println!("Total tracked: {}", stats.data.summary.messages);
+for item in stats.data.messages {
+    println!("{}: {} (opens: {}, clicks: {})", item.tracking_id, item.status, item.open_count, item.click_count);
 }
 # Ok(())
 # }
@@ -189,7 +188,8 @@ let domains = client.domains().list().await?;
 let new_domain = client.domains().create("mail.brand.com").await?;
 
 // Verify DNS records
-let verification = client.domains().verify(&new_domain.data.id).await?;
+let verification = client.domains().verify(&new_domain.data.domain.id).await?;
+println!("Verification status: {}", verification.data.verification.verification_status);
 # Ok(())
 # }
 ```
@@ -270,7 +270,7 @@ When verifying a subdomain like `mail.brand.com`, ensure you configure your DNS 
 
 ##### 🔁 Edge Case 7: Network Timeouts & Idempotency
 - If an HTTP request times out due to transient network issues, the email may already have been queued by the API Gateway.
-- Always provide an `idempotency_key` via `SendMessageRequest::builder().idempotency_key(...)` when dispatching critical transactional messages. Retrying with the same key returns the existing tracking receipt without duplicate sending.
+- Always dispatch critical transactional messages with `client.send_with_idempotency(request, "your-key")`. Retrying with the same key returns the existing tracking receipt without duplicate sending.
 
 ### 5. Hosted Mailboxes & Headless Inboxes
 
@@ -286,7 +286,8 @@ let mailbox = client.mailboxes().create(
 // Read incoming emails programmatically (Enterprise Headless Inbox)
 let inbox = client.mailboxes().messages().list(&mailbox.data.mailbox.id, None).await?;
 for msg in inbox.data.items {
-    println!("From: {} | Subject: {}", msg.from.email, msg.subject);
+    let from = msg.from.first().map(|address| address.email.as_str()).unwrap_or("unknown");
+    println!("From: {} | Subject: {:?}", from, msg.subject);
 }
 # Ok(())
 # }
