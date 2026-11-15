@@ -10,6 +10,20 @@ use crate::config::{AuthScheme, ClientConfig};
 use crate::errors::{Result, WazobiaError};
 use crate::models::common::ApiResponse;
 
+/// Percent-encode an untrusted dynamic path segment (RFC 3986 unreserved set).
+pub fn encode_path_segment(segment: &str) -> String {
+    let mut out = String::with_capacity(segment.len());
+    for byte in segment.as_bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            out.push(*byte as char);
+        } else {
+            use std::fmt::Write;
+            let _ = write!(&mut out, "%{byte:02X}");
+        }
+    }
+    out
+}
+
 pub struct HttpClient {
     config: Arc<ClientConfig>,
     client: reqwest::Client,

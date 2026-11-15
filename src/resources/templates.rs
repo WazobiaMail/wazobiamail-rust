@@ -2,7 +2,7 @@ use reqwest::Method;
 use std::sync::Arc;
 
 use crate::errors::Result;
-use crate::http::HttpClient;
+use crate::http::{encode_path_segment, HttpClient};
 use crate::models::common::ApiResponse;
 use crate::models::templates::{
     CreateTemplateRequest, PreviewTemplateRequest, Template, TemplateListQuery, TemplatePage,
@@ -63,6 +63,7 @@ impl TemplatesResource {
 
     /// Retrieve a template by ID.
     pub async fn get(&self, template_id: &str) -> Result<ApiResponse<Template>> {
+        let template_id = encode_path_segment(template_id);
         let path = format!("/templates/{template_id}");
         let builder = self.http.request(Method::GET, &path);
         self.http.execute(builder).await
@@ -74,6 +75,7 @@ impl TemplatesResource {
         template_id: &str,
         request: UpdateTemplateRequest,
     ) -> Result<ApiResponse<Template>> {
+        let template_id = encode_path_segment(template_id);
         let path = format!("/templates/{template_id}");
         let builder = self.http.request(Method::PUT, &path).json(&request);
         self.http.execute(builder).await
@@ -88,6 +90,7 @@ impl TemplatesResource {
         template_id: &str,
         sample_variables: Option<serde_json::Value>,
     ) -> Result<ApiResponse<TemplatePreview>> {
+        let template_id = encode_path_segment(template_id);
         let path = format!("/templates/{template_id}/preview");
         let payload = PreviewTemplateRequest { sample_variables };
         let builder = self.http.request(Method::POST, &path).json(&payload);
@@ -96,6 +99,7 @@ impl TemplatesResource {
 
     /// Delete a template.
     pub async fn delete(&self, template_id: &str) -> Result<ApiResponse<()>> {
+        let template_id = encode_path_segment(template_id);
         let path = format!("/templates/{template_id}");
         let builder = self.http.request(Method::DELETE, &path);
         self.http.execute(builder).await

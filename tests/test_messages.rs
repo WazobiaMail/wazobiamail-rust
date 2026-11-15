@@ -44,7 +44,10 @@ async fn test_send_email_wire_contract_and_receipt() {
     assert_eq!(req.method, "POST");
     assert_eq!(req.path, "/api/v1/sending/messages");
     assert_eq!(req.header("X-API-Key"), Some("wzbm_mock_key_123456789"));
-    assert_eq!(req.header("User-Agent"), Some("wazobiamail-rust/0.1.0"));
+    assert_eq!(
+        req.header("User-Agent"),
+        Some(wazobiamail::config::DEFAULT_USER_AGENT)
+    );
 
     let json: serde_json::Value = req.json().unwrap();
     assert_eq!(json["to"][0], "customer@example.com");
@@ -366,4 +369,48 @@ async fn test_list_email_logs_real_shape() {
 
     let req = server.last_request();
     assert_eq!(req.path, "/api/v1/account/email-logs?limit=25");
+}
+
+#[tokio::test]
+async fn test_upload_attachment_preserves_bytes_on_invalid_mime_and_encodes_path() {
+    use serde_json::json;
+    use wazobiamail::models::messages::AttachmentFile;
+
+    let server = common::MockServer::start().await;
+    server.enqueue_json(
+        200,
+        json!({
+            "file": {
+                "fileName": ".._report.pdf",
+                "contentType": "application/octet-stream",
+                "sizeBytes": 7,
+                "publicUrl": "https://cdn.example.com/report.pdf"
+            }
+        }),
+    );
+
+    let client = server.client();
+    let res = client
+        .messages()
+        .upload_attachment(AttachmentFile::from_bytes("../report.pdf", b"PDFDATA".to_vec(), "not a/valid/mime"))
+        .await
+        .unwrap();
+
+    assert_eq!(res.data.file.file_name, ".._report.pdf");
+    let req = server.last_request();
+    let body_text = String::from_utf8_lossy(&req.body);
+    assert!(body_text.contains("PDFDATA"));
+    assert!(body_text.contains(".._report.pdf"));
+
+    let empty_err = client
+        .messages()
+        .upload_attachment(AttachmentFile::from_bytes("empty.txt", Vec::new(), "text/plain"))
+        .await
+        .unwrap_err();
+    assert!(matches!(empty_err, wazobiamail::WazobiaError::Validation { .. }));
+
+    server.enqueue_json(200, json!({"message": {"message": {"trackingId": "id_1", "subject": "Hi", "from": "a@b.com", "to": ["c@d.com"], "status": "queued", "recipientsCount": 1}, "events": []}}));
+    let _ = client.messages().get_tracking("../evil").await;
+    let encoded_req = server.last_request();
+    assert_eq!(encoded_req.path, "/api/v1/sending/tracking/messages/..%2Fevil");
 }

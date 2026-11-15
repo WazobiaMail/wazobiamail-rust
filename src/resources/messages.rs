@@ -2,8 +2,8 @@ use reqwest::multipart::{Form, Part};
 use reqwest::Method;
 use std::sync::Arc;
 
-use crate::errors::Result;
-use crate::http::HttpClient;
+use crate::errors::{Result, WazobiaError};
+use crate::http::{encode_path_segment, HttpClient};
 use crate::models::common::ApiResponse;
 use crate::models::messages::{
     AttachmentFile, EmailLogs, SendEnvelope, SendMessageRequest, SpamCheckRequest, SpamCheckResult,
@@ -14,6 +14,59 @@ use crate::models::messages::{
 #[derive(Clone)]
 pub struct MessagesResource {
     http: Arc<HttpClient>,
+}
+
+fn sanitize_file_name(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| {
+            if matches!(c, '\r' | '\n' | '\0' | '"' | '\\' | '/') {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty() {
+        "attachment.dat".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn sanitize_mime(mime: &str) -> String {
+    let cleaned: String = mime
+        .chars()
+        .filter(|c| !matches!(c, '\r' | '\n' | '\0'))
+        .collect();
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty() {
+        "application/octet-stream".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn build_file_part(file: AttachmentFile) -> Result<Part> {
+    if file.content.is_empty() {
+        return Err(WazobiaError::Validation {
+            message: "Attachment file content must not be empty".to_string(),
+            errors: Default::default(),
+        });
+    }
+
+    let safe_name = sanitize_file_name(&file.file_name);
+    let candidate_mime = sanitize_mime(&file.content_type);
+    let safe_mime = if Part::bytes(&[][..]).mime_str(&candidate_mime).is_ok() {
+        candidate_mime
+    } else {
+        "application/octet-stream".to_string()
+    };
+
+    Ok(Part::bytes(file.content)
+        .file_name(safe_name)
+        .mime_str(&safe_mime)?)
 }
 
 impl MessagesResource {
@@ -48,16 +101,19 @@ impl MessagesResource {
         request: SendMessageRequest,
         files: Vec<AttachmentFile>,
     ) -> Result<ApiResponse<SendEnvelope>> {
+        if files.is_empty() {
+            return Err(WazobiaError::Validation {
+                message: "At least one file attachment is required".to_string(),
+                errors: Default::default(),
+            });
+        }
+
         let mut form = Form::new();
         let message_json = serde_json::to_string(&request)?;
         form = form.text("message", message_json);
 
         for file in files {
-            let part = Part::bytes(file.content)
-                .file_name(file.file_name)
-                .mime_str(&file.content_type)
-                .unwrap_or_else(|_| Part::bytes(vec![]));
-            form = form.part("files", part);
+            form = form.part("files", build_file_part(file)?);
         }
 
         let builder = self
@@ -74,11 +130,7 @@ impl MessagesResource {
         &self,
         file: AttachmentFile,
     ) -> Result<ApiResponse<UploadedFileEnvelope>> {
-        let part = Part::bytes(file.content)
-            .file_name(file.file_name)
-            .mime_str(&file.content_type)
-            .unwrap_or_else(|_| Part::bytes(vec![]));
-        let form = Form::new().part("file", part);
+        let form = Form::new().part("file", build_file_part(file)?);
 
         let builder = self
             .http
@@ -138,6 +190,7 @@ impl MessagesResource {
         &self,
         tracking_id: &str,
     ) -> Result<ApiResponse<TrackingDetailEnvelope>> {
+        let tracking_id = encode_path_segment(tracking_id);
         let path = format!("/sending/tracking/messages/{tracking_id}");
         let builder = self.http.request(Method::GET, &path);
         self.http.execute(builder).await

@@ -2,7 +2,7 @@ use reqwest::Method;
 use std::sync::Arc;
 
 use crate::errors::Result;
-use crate::http::HttpClient;
+use crate::http::{encode_path_segment, HttpClient};
 use crate::models::common::ApiResponse;
 use crate::models::smtp::{
     CreateSmtpRelayRequest, SmtpAccess, SmtpAccessPreference, SmtpRelay, SmtpRelayDeleted,
@@ -40,6 +40,7 @@ impl SmtpRelaysResource {
 
     /// Retrieve an SMTP relay by ID.
     pub async fn get(&self, relay_id: &str) -> Result<ApiResponse<SmtpRelayEnvelope>> {
+        let relay_id = encode_path_segment(relay_id);
         let path = format!("/smtp-relays/{relay_id}");
         let builder = self.http.request(Method::GET, &path);
         self.http.execute(builder).await
@@ -51,6 +52,7 @@ impl SmtpRelaysResource {
         relay_id: &str,
         request: UpdateSmtpRelayRequest,
     ) -> Result<ApiResponse<SmtpRelayEnvelope>> {
+        let relay_id = encode_path_segment(relay_id);
         let path = format!("/smtp-relays/{relay_id}");
         let builder = self.http.request(Method::PATCH, &path).json(&request);
         self.http.execute(builder).await
@@ -58,6 +60,7 @@ impl SmtpRelaysResource {
 
     /// Activate an SMTP relay (`POST /smtp-relays/{id}/activate`).
     pub async fn activate(&self, relay_id: &str) -> Result<ApiResponse<SmtpRelayEnvelope>> {
+        let relay_id = encode_path_segment(relay_id);
         let path = format!("/smtp-relays/{relay_id}/activate");
         let builder = self.http.request(Method::POST, &path);
         self.http.execute(builder).await
@@ -65,6 +68,7 @@ impl SmtpRelaysResource {
 
     /// Deactivate an SMTP relay (`POST /smtp-relays/{id}/deactivate`).
     pub async fn deactivate(&self, relay_id: &str) -> Result<ApiResponse<SmtpRelayEnvelope>> {
+        let relay_id = encode_path_segment(relay_id);
         let path = format!("/smtp-relays/{relay_id}/deactivate");
         let builder = self.http.request(Method::POST, &path);
         self.http.execute(builder).await
@@ -72,6 +76,7 @@ impl SmtpRelaysResource {
 
     /// Delete an SMTP relay.
     pub async fn delete(&self, relay_id: &str) -> Result<ApiResponse<SmtpRelayDeleted>> {
+        let relay_id = encode_path_segment(relay_id);
         let path = format!("/smtp-relays/{relay_id}");
         let builder = self.http.request(Method::DELETE, &path);
         self.http.execute(builder).await

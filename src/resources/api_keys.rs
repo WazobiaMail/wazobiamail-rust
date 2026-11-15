@@ -2,7 +2,7 @@ use reqwest::Method;
 use std::sync::Arc;
 
 use crate::errors::Result;
-use crate::http::HttpClient;
+use crate::http::{encode_path_segment, HttpClient};
 use crate::models::api_keys::{
     ApiKey, ApiKeyEnvelope, ApiKeyRevoked, CreateApiKeyRequest, CreatedApiKey,
 };
@@ -43,6 +43,7 @@ impl ApiKeysResource {
 
     /// Regenerate an existing API key's secret.
     pub async fn regenerate(&self, key_id: &str) -> Result<ApiResponse<ApiKeyEnvelope>> {
+        let key_id = encode_path_segment(key_id);
         let path = format!("/sending/api-keys/{key_id}/regenerate");
         let builder = self.http.request(Method::POST, &path);
         self.http.execute(builder).await
@@ -50,6 +51,7 @@ impl ApiKeysResource {
 
     /// Revoke an API key.
     pub async fn revoke(&self, key_id: &str) -> Result<ApiResponse<ApiKeyRevoked>> {
+        let key_id = encode_path_segment(key_id);
         let path = format!("/sending/api-keys/{key_id}/revoke");
         let builder = self.http.request(Method::POST, &path);
         self.http.execute(builder).await

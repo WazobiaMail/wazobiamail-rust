@@ -217,11 +217,35 @@ impl WazobiaMailBuilder {
             ));
         }
 
+        if let Some(ref key) = api_key {
+            if key.chars().any(|c| matches!(c, '\r' | '\n' | '\0')) {
+                return Err(WazobiaError::InvalidConfiguration(
+                    "API key contains illegal control characters".to_string(),
+                ));
+            }
+        }
+
+        if let Some(ref token) = access_token {
+            if token.chars().any(|c| matches!(c, '\r' | '\n' | '\0')) {
+                return Err(WazobiaError::InvalidConfiguration(
+                    "Access token contains illegal control characters".to_string(),
+                ));
+            }
+        }
+
         let base_url = self
             .base_url
             .unwrap_or_else(|| DEFAULT_BASE_URL.to_string())
             .trim_end_matches('/')
             .to_string();
+
+        if base_url.chars().any(|c| matches!(c, '\r' | '\n' | '\0'))
+            || (!base_url.starts_with("https://") && !base_url.starts_with("http://"))
+        {
+            return Err(WazobiaError::InvalidConfiguration(
+                "base_url must use http:// or https:// without control characters".to_string(),
+            ));
+        }
 
         let timeout = self.timeout.unwrap_or(DEFAULT_TIMEOUT);
         let auth_scheme = self.auth_scheme.unwrap_or(AuthScheme::Header);

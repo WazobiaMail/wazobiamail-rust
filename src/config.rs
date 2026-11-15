@@ -4,8 +4,8 @@ use std::time::Duration;
 
 pub const DEFAULT_BASE_URL: &str = "https://app.wazobiamail.com/api/v1";
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
-pub const SDK_VERSION: &str = "0.1.0";
-pub const DEFAULT_USER_AGENT: &str = "wazobiamail-rust/0.1.0";
+pub const SDK_VERSION: &str = "0.1.1";
+pub const DEFAULT_USER_AGENT: &str = "wazobiamail-rust/0.1.1";
 
 /// How credentials should be transmitted over HTTP.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

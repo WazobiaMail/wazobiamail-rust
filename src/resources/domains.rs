@@ -2,7 +2,7 @@ use reqwest::Method;
 use std::sync::Arc;
 
 use crate::errors::Result;
-use crate::http::HttpClient;
+use crate::http::{encode_path_segment, HttpClient};
 use crate::models::common::{ApiResponse, Empty, Items};
 use crate::models::domains::{
     CloudflareConnect, CloudflareStatus, CloudflareSyncRequest, CloudflareSyncResult,
@@ -47,6 +47,7 @@ impl DomainsResource {
 
     /// Retrieve domain details by ID.
     pub async fn get(&self, domain_id: &str) -> Result<ApiResponse<DomainEnvelope>> {
+        let domain_id = encode_path_segment(domain_id);
         let path = format!("/sending/domains/{domain_id}");
         let builder = self.http.request(Method::GET, &path);
         self.http.execute(builder).await
@@ -58,6 +59,7 @@ impl DomainsResource {
         domain_id: &str,
         request: UpdateDomainRequest,
     ) -> Result<ApiResponse<DomainEnvelope>> {
+        let domain_id = encode_path_segment(domain_id);
         let path = format!("/sending/domains/{domain_id}");
         let builder = self.http.request(Method::PATCH, &path).json(&request);
         self.http.execute(builder).await
@@ -81,6 +83,7 @@ impl DomainsResource {
 
     /// Remove a registered domain.
     pub async fn delete(&self, domain_id: &str) -> Result<ApiResponse<DomainDeleted>> {
+        let domain_id = encode_path_segment(domain_id);
         let path = format!("/sending/domains/{domain_id}");
         let builder = self.http.request(Method::DELETE, &path);
         self.http.execute(builder).await
@@ -97,6 +100,7 @@ impl DomainsResource {
         domain_id: &str,
         force: Option<bool>,
     ) -> Result<ApiResponse<DomainVerificationEnvelope>> {
+        let domain_id = encode_path_segment(domain_id);
         let path = format!("/sending/domains/{domain_id}/verify");
         let payload = VerifyDomainRequest { force };
         let builder = self.http.request(Method::POST, &path).json(&payload);
@@ -106,6 +110,7 @@ impl DomainsResource {
     /// Retrieve DNS records required for sending and receiving
     /// (`GET /sending/domains/{id}/dns-records`, `{"domain": {...}}`).
     pub async fn get_dns_records(&self, domain_id: &str) -> Result<ApiResponse<DomainDnsEnvelope>> {
+        let domain_id = encode_path_segment(domain_id);
         let path = format!("/sending/domains/{domain_id}/dns-records");
         let builder = self.http.request(Method::GET, &path);
         self.http.execute(builder).await

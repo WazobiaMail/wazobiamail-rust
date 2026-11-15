@@ -1,6 +1,6 @@
 [package]
 name = "wazobiamail"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Bowofade Oyerinde <bowofade@bonifade.com>"]
 description = "Official WazobiaMail Rust SDK for transactional email via API. Start free with 3,000 emails/month. A Resend alternative that also supports SMTP, with domains, hosted mailboxes, and deliverability."

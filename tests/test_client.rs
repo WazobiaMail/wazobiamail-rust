@@ -50,3 +50,17 @@ async fn test_client_fails_when_no_api_key() {
     let result = WazobiaMail::builder().build();
     assert!(matches!(result, Err(WazobiaError::Authentication(_))));
 }
+
+#[tokio::test]
+async fn test_client_rejects_unsafe_base_url_and_control_chars() {
+    let bad_url = WazobiaMail::builder()
+        .api_key("wzbm_live_test")
+        .base_url("javascript:alert(1)")
+        .build();
+    assert!(matches!(bad_url, Err(WazobiaError::InvalidConfiguration(_))));
+
+    let bad_key = WazobiaMail::builder()
+        .api_key("wzbm_live_test\r\nX-Injected: 1")
+        .build();
+    assert!(matches!(bad_key, Err(WazobiaError::InvalidConfiguration(_))));
+}

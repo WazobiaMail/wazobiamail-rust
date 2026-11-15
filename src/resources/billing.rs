@@ -2,7 +2,7 @@ use reqwest::Method;
 use std::sync::Arc;
 
 use crate::errors::Result;
-use crate::http::HttpClient;
+use crate::http::{encode_path_segment, HttpClient};
 use crate::models::billing::{
     Currency, EffectiveLimitsEnvelope, Invoice, InvoiceEnvelope, InvoicePage, PlanPage,
     PurchaseUnitsRequest, SubscriptionEnvelope, UnitLedgerPage, UnitPack, UnitPurchase,
@@ -31,6 +31,7 @@ impl BillingResource {
 
     /// Retrieve an invoice by ID. The payload is `{"invoice": {...}}`.
     pub async fn get_invoice(&self, invoice_id: &str) -> Result<ApiResponse<InvoiceEnvelope>> {
+        let invoice_id = encode_path_segment(invoice_id);
         let path = format!("/billing/invoices/{invoice_id}");
         let builder = self.http.request(Method::GET, &path);
         self.http.execute(builder).await
@@ -38,6 +39,7 @@ impl BillingResource {
 
     /// Download invoice PDF document bytes.
     pub async fn download_invoice(&self, invoice_id: &str) -> Result<Vec<u8>> {
+        let invoice_id = encode_path_segment(invoice_id);
         let path = format!("/billing/invoices/{invoice_id}/download");
         let builder = self.http.request(Method::GET, &path);
         self.http.execute_bytes(builder).await

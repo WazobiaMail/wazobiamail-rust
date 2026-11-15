@@ -33,7 +33,7 @@ Or add it to `Cargo.toml` manually:
 
 ```toml
 [dependencies]
-wazobiamail = "0.1.0"
+wazobiamail = "0.1.1"
 tokio = { version = "1", features = ["full"] }
 ```
 

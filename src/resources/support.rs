@@ -2,7 +2,7 @@ use reqwest::Method;
 use std::sync::Arc;
 
 use crate::errors::Result;
-use crate::http::HttpClient;
+use crate::http::{encode_path_segment, HttpClient};
 use crate::models::common::{ApiResponse, Empty};
 use crate::models::support::{
     CreateSupportTicketRequest, ReplySupportRequest, SupportTicket, SupportTicketCreated,
@@ -60,6 +60,7 @@ impl SupportResource {
 
     /// Retrieve a support ticket and its messages by ID.
     pub async fn get(&self, ticket_id: &str) -> Result<ApiResponse<SupportTicket>> {
+        let ticket_id = encode_path_segment(ticket_id);
         let path = format!("/support/tickets/{ticket_id}");
         let builder = self.http.request(Method::GET, &path);
         self.http.execute(builder).await
@@ -79,6 +80,7 @@ impl SupportResource {
         ticket_id: &str,
         request: ReplySupportRequest,
     ) -> Result<ApiResponse<Empty>> {
+        let ticket_id = encode_path_segment(ticket_id);
         let path = format!("/support/tickets/{ticket_id}/messages");
         let builder = self.http.request(Method::POST, &path).json(&request);
         self.http.execute(builder).await

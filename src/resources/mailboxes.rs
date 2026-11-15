@@ -2,7 +2,7 @@ use reqwest::Method;
 use std::sync::Arc;
 
 use crate::errors::Result;
-use crate::http::HttpClient;
+use crate::http::{encode_path_segment, HttpClient};
 use crate::models::common::ApiResponse;
 use crate::models::mailboxes::{
     CreateMailboxCredentialRequest, CreateMailboxRequest, CreatedMailbox, InboxMessageDetail,
@@ -59,6 +59,7 @@ impl MailboxesResource {
 
     /// Retrieve mailbox details (`{"mailbox": {...}}`).
     pub async fn get(&self, mailbox_id: &str) -> Result<ApiResponse<MailboxEnvelope>> {
+        let mailbox_id = encode_path_segment(mailbox_id);
         let path = format!("/mailboxes/{mailbox_id}");
         let builder = self.http.request(Method::GET, &path);
         self.http.execute(builder).await
@@ -70,6 +71,7 @@ impl MailboxesResource {
         mailbox_id: &str,
         display_name: Option<&str>,
     ) -> Result<ApiResponse<MailboxEnvelope>> {
+        let mailbox_id = encode_path_segment(mailbox_id);
         let path = format!("/mailboxes/{mailbox_id}");
         let payload = serde_json::json!({ "displayName": display_name });
         let builder = self.http.request(Method::PATCH, &path).json(&payload);
@@ -78,6 +80,7 @@ impl MailboxesResource {
 
     /// Delete a hosted mailbox.
     pub async fn delete(&self, mailbox_id: &str) -> Result<ApiResponse<MailboxDeleted>> {
+        let mailbox_id = encode_path_segment(mailbox_id);
         let path = format!("/mailboxes/{mailbox_id}");
         let builder = self.http.request(Method::DELETE, &path);
         self.http.execute(builder).await
@@ -108,6 +111,7 @@ impl MailboxesResource {
         mailbox_id: &str,
         expires_at: Option<&str>,
     ) -> Result<ApiResponse<MailboxCredentialEnvelope>> {
+        let mailbox_id = encode_path_segment(mailbox_id);
         let path = format!("/mailboxes/{mailbox_id}/credentials");
         let payload = CreateMailboxCredentialRequest {
             expires_at: expires_at.map(|s| s.to_string()),
@@ -123,6 +127,8 @@ impl MailboxesResource {
         mailbox_id: &str,
         credential_id: &str,
     ) -> Result<ApiResponse<MailboxCredentialRevoked>> {
+        let mailbox_id = encode_path_segment(mailbox_id);
+        let credential_id = encode_path_segment(credential_id);
         let path = format!("/mailboxes/{mailbox_id}/credentials/{credential_id}/revoke");
         let builder = self.http.request(Method::POST, &path);
         self.http.execute(builder).await
@@ -162,6 +168,7 @@ impl InboxMessagesSubResource {
         limit: Option<u32>,
         search: Option<&str>,
     ) -> Result<ApiResponse<MailboxMessagePage>> {
+        let mailbox_id = encode_path_segment(mailbox_id);
         let path = format!("/mailboxes/{mailbox_id}/messages");
         let mut builder = self.http.request(Method::GET, &path);
         if let Some(unread) = unread_only {
@@ -185,6 +192,8 @@ impl InboxMessagesSubResource {
         mailbox_id: &str,
         message_id: &str,
     ) -> Result<ApiResponse<InboxMessageDetail>> {
+        let mailbox_id = encode_path_segment(mailbox_id);
+        let message_id = encode_path_segment(message_id);
         let path = format!("/mailboxes/{mailbox_id}/messages/{message_id}");
         let builder = self.http.request(Method::GET, &path);
         self.http.execute(builder).await
@@ -196,6 +205,8 @@ impl InboxMessagesSubResource {
         mailbox_id: &str,
         message_id: &str,
     ) -> Result<ApiResponse<MailboxMessageDeleted>> {
+        let mailbox_id = encode_path_segment(mailbox_id);
+        let message_id = encode_path_segment(message_id);
         let path = format!("/mailboxes/{mailbox_id}/messages/{message_id}");
         let builder = self.http.request(Method::DELETE, &path);
         self.http.execute(builder).await
